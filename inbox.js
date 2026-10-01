@@ -4,7 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const store = require('./db');
-const { parseInboxLines } = require('./claude');
+const { parseFreeText } = require('./claude');
 
 const INBOX_PATH = path.join(__dirname, 'inbox.md');
 
@@ -22,21 +22,29 @@ function split(text) {
   return { keep, todo };
 }
 
-// Returns the tasks created. Unconfirmed "?" lines are left in the file.
-async function processInbox() {
-  const { keep, todo } = split(read());
-  if (!todo.length) return [];
-  const parsed = await parseInboxLines(todo);
+// Free text to tasks. Person and company go into the person field, logistics start with Kieran.
+async function addFromFreeText(lines, source_type) {
+  const parsed = await parseFreeText(lines);
   const created = parsed.map(p => store.addTask({
     title: p.title,
     detail: p.detail,
     person: p.person,
+    company: p.company,
     person_email: p.person_email,
     direction: p.direction,
     due_at: p.due_at,
-    source_type: 'note',
+    status: p.delegate ? 'delegated' : 'new',
+    source_type,
     source_excerpt: p.line,
   }));
+  return { parsed, created };
+}
+
+// Returns the tasks created. Unconfirmed "?" lines are left in the file.
+async function processInbox() {
+  const { keep, todo } = split(read());
+  if (!todo.length) return [];
+  const { parsed, created } = await addFromFreeText(todo, 'note');
   // Anything the parser didn't account for stays in the file rather than vanishing.
   const handled = new Set(parsed.map(p => p.line.trim()));
   const rest = [...keep, ...todo.filter(l => !handled.has(l))];
@@ -44,4 +52,4 @@ async function processInbox() {
   return created;
 }
 
-module.exports = { read, write, processInbox, INBOX_PATH };
+module.exports = { read, write, processInbox, addFromFreeText, INBOX_PATH };

@@ -17,7 +17,7 @@ Gmail needs a Google Cloud OAuth client of type "Desktop app" with the Gmail API
 
 ## Dashboard
 
-Four columns (New, Active, Waiting on them, Done for the last 14 days), each sorted stalest first. A card untouched for 5+ days gets an amber edge and an "Nd untouched" tag. The brief at the top is regenerated on every load.
+Five columns (New, Active, Waiting on them, With Kieran, Done for the last 14 days), each sorted stalest first. Quick add and the inbox both parse free text: the person and company go into the person field, and scheduling or logistics start delegated to Kieran. A new person gets one "how do you know them?" prompt under the brief, and the answer is kept on the person. A card untouched for 5+ days gets an amber edge and an "Nd untouched" tag. The brief at the top is regenerated on every load.
 
 Click a card for the side panel with the source excerpt and link, the log, status buttons, and a chat with Claude scoped to that task. The system prompt is `CLAUDE.md` plus the task row, the log, and the excerpt. Both sides of the chat are written to `task_log` as `kind=chat` (your turns are prefixed `Dror: `). When a reply contains a draft, it is also logged as `kind=draft` and gets a "Save as draft in Gmail" button. For email tasks the draft is threaded onto `source_ref`.
 

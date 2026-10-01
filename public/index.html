@@ -38,7 +38,10 @@
 
   .brief { margin: 14px 24px 0; padding: 14px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; max-width: 980px; font-size: 15px; line-height: 1.55; }
 
-  .board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, .8fr); gap: 14px; padding: 16px 24px; align-items: start; }
+  .who { margin: 10px 24px 0; max-width: 980px; padding: 10px 14px; border: 1px solid var(--lp); background: var(--lp-soft); border-radius: 10px; display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+  .who[hidden] { display: none; }
+  .who button { padding: 3px 10px; }
+  .board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, .8fr); gap: 14px; padding: 16px 24px; align-items: start; }
   .col { background: transparent; min-width: 0; }
   .col h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; display: flex; gap: 6px; align-items: center; }
   .col h2 .n { background: var(--line); color: var(--ink); border-radius: 10px; padding: 0 7px; font-size: 11px; letter-spacing: 0; }
@@ -107,7 +110,7 @@
 
   @media (max-width: 900px) {
     .board { grid-template-columns: 1fr; padding: 16px; }
-    header, .brief, .inbox { margin-left: 16px; margin-right: 16px; }
+    header, .brief, .who, .inbox { margin-left: 16px; margin-right: 16px; }
     header { padding-left: 0; padding-right: 0; }
   }
 </style>
@@ -119,6 +122,7 @@
   <span class="sync" id="sync"></span>
 </header>
 <div class="brief" id="brief">Loading…</div>
+<div class="who" id="who" hidden></div>
 
 <main class="board" id="board"></main>
 
@@ -140,6 +144,7 @@ const COLS = [
   { key: 'new', label: 'New' },
   { key: 'active', label: 'Active' },
   { key: 'waiting', label: 'Waiting on them' },
+  { key: 'delegated', label: 'With Kieran' },
   { key: 'closed', label: 'Done · 14 days' },
 ];
 const state = { board: null, current: null, doneOpen: false, pending: false };
@@ -149,7 +154,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const days = iso => Math.floor((Date.now() - new Date(iso)) / 86400000);
 const fmtDate = iso => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 const fmtTs = iso => new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-const isOpen = t => ['new', 'active', 'waiting'].includes(t.status);
+const isOpen = t => ['new', 'active', 'waiting', 'delegated'].includes(t.status);
 
 async function api(path, opts = {}) {
   const res = await fetch(path, {
@@ -195,10 +200,11 @@ function renderBoard() {
   $('#date').textContent = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
   $('#brief').textContent = b.brief;
   renderSync(b.sync);
+  renderWho(b.unknownPeople);
   if (document.activeElement !== $('#inboxText')) $('#inboxText').value = b.inbox;
 
   // Already sorted by last_touched_at ascending (stalest first) on the server.
-  const groups = { new: [], active: [], waiting: [], closed: [] };
+  const groups = { new: [], active: [], waiting: [], delegated: [], closed: [] };
   for (const t of b.tasks) (isOpen(t) ? groups[t.status] : groups.closed).push(t);
   groups.closed.sort((a, b) => new Date(b.closed_at) - new Date(a.closed_at));
 
@@ -214,6 +220,29 @@ function renderBoard() {
     </section>`;
   }).join('');
 }
+
+// New people get asked once: the answer is stored on the person, so it never comes up again.
+const RELS = [['lp', 'LP'], ['founder', 'Founder'], ['partner', 'Partner'], ['team', 'Team'], ['friend', 'Friend'], ['other', 'Other']];
+function renderWho(people) {
+  const el = $('#who');
+  const p = people?.[0];
+  el.hidden = !p;
+  if (!p) return;
+  const label = `${p.name ?? p.email}${p.company ? ` (${p.company})` : ''}`;
+  const more = people.length > 1 ? ` <span class="empty">${people.length - 1} more after this</span>` : '';
+  el.innerHTML = `<span>New person <b>${esc(label)}</b>. How do you know them?</span>`
+    + RELS.map(([k, v]) => `<button data-rel="${k}">${v}</button>`).join('') + more;
+  el.dataset.email = p.email ?? '';
+  el.dataset.name = p.name ?? '';
+}
+
+$('#who').addEventListener('click', async e => {
+  const rel = e.target.dataset.rel;
+  if (!rel) return;
+  const el = $('#who');
+  await api('/api/people', { method: 'POST', body: { email: el.dataset.email || null, name: el.dataset.name || null, relationship: rel } });
+  await loadBoard();
+});
 
 function renderSync(s) {
   const el = $('#sync');
@@ -233,7 +262,9 @@ $('#board').addEventListener('keydown', async e => {
   if (e.target.id !== 'quickadd' || e.key !== 'Enter' || !e.target.value.trim()) return;
   const title = e.target.value.trim();
   e.target.value = '';
-  await api('/api/tasks', { method: 'POST', body: { title } });
+  e.target.placeholder = 'Adding…';
+  e.target.disabled = true;
+  try { await api('/api/tasks', { method: 'POST', body: { title } }); } catch (err) { alert(err.message); }
   await loadBoard();
   $('#quickadd').focus();
 });
@@ -319,8 +350,9 @@ function renderPanel() {
       </section>
       <section>
         <div class="actions">
-          ${open && t.status !== 'active' ? '<button data-status="active">Mark active</button>' : ''}
+          ${open && t.status !== 'active' ? `<button data-status="active">${t.status === 'delegated' ? 'Take it back' : 'Mark active'}</button>` : ''}
           ${open && t.status !== 'waiting' ? '<button data-status="waiting">Mark waiting</button>' : ''}
+          ${open && t.status !== 'delegated' ? '<button data-status="delegated">Delegate to Kieran</button>' : ''}
           ${open ? '<button data-act="done">Mark done</button><button data-act="drop">Drop</button><button data-act="snooze">Snooze</button>' : '<button data-status="active">Reopen</button>'}
         </div>
         <div id="actForm"></div>
