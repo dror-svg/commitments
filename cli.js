@@ -23,7 +23,7 @@ const USAGE = `Usage: node cli.js <command> [args] [--json]
                                   open tasks for dedupe (--ref searches all statuses)
   person <email> [--name NAME] [--rel lp|founder|partner|team|friend|other] [--notes TEXT]
   people
-  brief                           today's brief paragraph
+  brief                           today's brief paragraph (--json adds owe: open items on you)
   process-inbox                   turn inbox.md lines into tasks (keeps "?" lines)
   sync ["commit message"]         pull, replay local changes, commit data, push`;
 
@@ -137,8 +137,8 @@ const commands = {
       console.log(`${p.email} · ${p.name ?? ''} · ${p.relationship}${p.notes ? ` · ${p.notes}` : ''}`)) : console.log('Nobody yet.')));
   },
   brief() {
-    const text = require('./brief').composeBrief();
-    out({ brief: text }, () => console.log(text));
+    const { composeBrief, oweCount } = require('./brief');
+    out({ brief: composeBrief(), owe: oweCount() }, d => console.log(d.brief));
   },
   async 'process-inbox'() {
     const created = await require('./inbox').processInbox();

@@ -52,7 +52,7 @@ function composeBrief(tasks = store.board(), now = new Date()) {
   const parts = [];
   if (!open.length && !closed.length) return 'Nothing open. Nothing closed since yesterday.';
 
-  parts.push(`${words(mine.length)[0].toUpperCase()}${words(mine.length).slice(1)} open item${mine.length === 1 ? '' : 's'} on you, ${words(waiting.length)} waiting on others.`);
+  parts.push(`${words(mine.length)[0].toUpperCase()}${words(mine.length).slice(1)} open item${mine.length === 1 ? '' : 's'} on you, ${waiting.length ? words(waiting.length) : 'nothing'} waiting on others.`);
 
   if (due.length) {
     const items = due.slice(0, 4).map(t => `${name(t)} is ${dueLabel(t, todayEnd)}`);
@@ -84,4 +84,9 @@ function composeBrief(tasks = store.board(), now = new Date()) {
   return parts.join(' ');
 }
 
-module.exports = { composeBrief, STALE_DAYS };
+// Open items on Dror that aren't parked waiting on someone else. The sweep's email subject.
+function oweCount(tasks = store.board()) {
+  return tasks.filter(t => store.OPEN_STATUSES.includes(t.status) && t.direction === 'i_owe' && t.status !== 'waiting').length;
+}
+
+module.exports = { composeBrief, oweCount, STALE_DAYS };

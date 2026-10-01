@@ -252,7 +252,6 @@ function sourceLink(t) {
   if (!ref) return null;
   if (/^https?:\/\//.test(ref)) return ref;
   if (t.source_type === 'email') return `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(ref)}`;
-  if (t.source_type === 'meeting') return `https://notes.granola.ai/d/${encodeURIComponent(ref)}`;
   return null;
 }
 
