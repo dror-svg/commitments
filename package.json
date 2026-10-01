@@ -1,0 +1,21 @@
+{
+  "name": "commitments",
+  "version": "1.0.0",
+  "description": "Personal follow-through system",
+  "main": "db.js",
+  "scripts": {
+    "cli": "node cli.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dror-svg/commitments.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dror-svg/commitments/issues"
+  },
+  "homepage": "https://github.com/dror-svg/commitments#readme",
+  "dependencies": {
+    "better-sqlite3": "^13.0.3"
+  },
+  "private": true
+}
