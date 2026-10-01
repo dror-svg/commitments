@@ -56,6 +56,11 @@ CREATE TABLE IF NOT EXISTS people (
 `;
 
 let _db;
+function close() {
+  if (_db) _db.close();
+  _db = undefined;
+}
+
 function db() {
   if (_db) return _db;
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
@@ -233,8 +238,80 @@ function findBySourceRef(ref) {
   return db().prepare('SELECT * FROM tasks WHERE source_ref = ?').all(ref);
 }
 
+// Open tasks plus anything closed in the last `days` days. Feeds the dashboard and the brief.
+function board(days = 14) {
+  const since = new Date(Date.now() - days * 86400000).toISOString();
+  return db().prepare(`
+    SELECT t.*, p.relationship AS person_relationship
+    FROM tasks t LEFT JOIN people p ON p.email = t.person_email
+    WHERE t.status IN ('new','active','waiting') OR t.closed_at >= ?
+    ORDER BY t.last_touched_at ASC
+  `).all(since);
+}
+
+// Every mutation made through the exported API is appended to a journal next to the DB.
+// sync.js replays it on top of the remote copy when local and remote have both changed,
+// then clears it once the push lands. Internal calls inside this file are not journaled.
+const JOURNAL_PATH = `${DB_PATH}.pending.jsonl`;
+let journalOn = true;
+
+function journaled(op, fn) {
+  return (...args) => {
+    const result = fn(...args);
+    if (journalOn) {
+      const entry = { op, args, ts: now() };
+      if (op === 'addTask') entry.resultId = result.id;
+      fs.appendFileSync(JOURNAL_PATH, JSON.stringify(entry) + '\n');
+    }
+    return result;
+  };
+}
+
+function readJournal() {
+  if (!fs.existsSync(JOURNAL_PATH)) return [];
+  return fs.readFileSync(JOURNAL_PATH, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l));
+}
+
+function clearJournal() {
+  fs.rmSync(JOURNAL_PATH, { force: true });
+}
+
+// Re-applies journal entries to the current DB. Task ids created locally are remapped,
+// since the remote may have used those ids already. The journal is rewritten with the new
+// ids so later entries line up if the push fails and this runs again. Returns failures.
+function replayJournal(entries) {
+  const ops = { addTask, updateTask, setStatus, snooze, addLog, upsertPerson };
+  const idMap = new Map();
+  const failed = [];
+  const rewritten = [];
+  journalOn = false;
+  try {
+    for (const e of entries) {
+      try {
+        const args = [...e.args];
+        if (e.op !== 'addTask' && e.op !== 'upsertPerson' && idMap.has(args[0])) args[0] = idMap.get(args[0]);
+        const r = db().transaction(() => ops[e.op](...args))();
+        if (e.op === 'addTask') idMap.set(e.resultId, r.id);
+        rewritten.push({ ...e, args, ...(e.op === 'addTask' ? { resultId: r.id } : {}) });
+      } catch (err) {
+        failed.push({ ...e, error: err.message });
+      }
+    }
+  } finally {
+    journalOn = true;
+  }
+  fs.writeFileSync(JOURNAL_PATH, rewritten.map(e => JSON.stringify(e) + '\n').join(''));
+  return failed;
+}
+
 module.exports = {
-  db, DB_PATH, STATUSES, OPEN_STATUSES, DIRECTIONS, SOURCE_TYPES, LOG_KINDS, RELATIONSHIPS,
-  addTask, updateTask, setStatus, snooze, getTask, listTasks, getLog, addLog,
-  findOpen, findBySourceRef, upsertPerson, getPerson, listPeople, parseDate,
+  db, close, DB_PATH, STATUSES, OPEN_STATUSES, DIRECTIONS, SOURCE_TYPES, LOG_KINDS, RELATIONSHIPS,
+  addTask: journaled('addTask', addTask),
+  updateTask: journaled('updateTask', updateTask),
+  setStatus: journaled('setStatus', setStatus),
+  snooze: journaled('snooze', snooze),
+  addLog: journaled('addLog', addLog),
+  upsertPerson: journaled('upsertPerson', upsertPerson),
+  getTask, listTasks, getLog, findOpen, findBySourceRef, getPerson, listPeople, parseDate, board,
+  readJournal, clearJournal, replayJournal,
 };

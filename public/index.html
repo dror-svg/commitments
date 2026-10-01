@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Commitments</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #ffffff; --card: #ffffff; --ink: #1d1d1b; --muted: #75736d;
+    --line: #e4e1da; --accent: #c2410c; --accent-soft: #fdeee4; --stale: #b45309; --stale-soft: #fdf3e2;
+    --lp: #1d4ed8; --lp-soft: #e7eefc; --founder: #047857; --founder-soft: #e3f4ee; --overdue: #b91c1c;
+    --shadow: 0 1px 2px rgba(0,0,0,.05), 0 2px 8px rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161614; --panel: #1f1f1d; --card: #252523; --ink: #ecebe6; --muted: #9a988f;
+      --line: #34332f; --accent: #fb923c; --accent-soft: #3a2618; --stale: #f59e0b; --stale-soft: #3a2c12;
+      --lp: #93b4fb; --lp-soft: #1c2741; --founder: #6ee7b7; --founder-soft: #173129; --overdue: #f87171;
+      --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; }
+  button, input, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 5px 10px; }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  button:disabled { opacity: .5; cursor: default; }
+  input, textarea { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; width: 100%; }
+  textarea { resize: vertical; }
+  input:focus, textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+  header { display: flex; align-items: baseline; gap: 12px; padding: 18px 24px 0; }
+  header h1 { font-size: 17px; margin: 0; letter-spacing: -.01em; }
+  header .date { color: var(--muted); }
+  header .sync { margin-left: auto; color: var(--muted); font-size: 12px; display: flex; gap: 8px; align-items: center; }
+  header .sync.bad { color: var(--overdue); }
+
+  .brief { margin: 14px 24px 0; padding: 14px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; max-width: 980px; font-size: 15px; line-height: 1.55; }
+
+  .board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, .8fr); gap: 14px; padding: 16px 24px; align-items: start; }
+  .col { background: transparent; min-width: 0; }
+  .col h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; display: flex; gap: 6px; align-items: center; }
+  .col h2 .n { background: var(--line); color: var(--ink); border-radius: 10px; padding: 0 7px; font-size: 11px; letter-spacing: 0; }
+  .col h2 button { margin-left: auto; padding: 0 8px; font-size: 11px; text-transform: none; letter-spacing: 0; }
+  .cards { display: flex; flex-direction: column; gap: 8px; }
+  .empty { color: var(--muted); font-size: 13px; padding: 8px 2px; }
+  .quickadd { margin-bottom: 8px; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; box-shadow: var(--shadow); cursor: pointer; border-left: 3px solid transparent; }
+  .card:hover { border-color: var(--muted); border-left-color: inherit; }
+  .card.stale { border-left-color: var(--stale); }
+  .card.sel { outline: 2px solid var(--accent); }
+  .card .t { font-weight: 550; }
+  .card .m { color: var(--muted); font-size: 12px; margin-top: 3px; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+  .card.closed { opacity: .7; box-shadow: none; }
+  .card.closed .t { font-weight: 450; }
+
+  .tag { font-size: 11px; border-radius: 4px; padding: 0 5px; line-height: 17px; white-space: nowrap; }
+  .tag.lp { background: var(--lp-soft); color: var(--lp); font-weight: 600; }
+  .tag.founder { background: var(--founder-soft); color: var(--founder); }
+  .tag.owe { background: var(--line); color: var(--ink); }
+  .tag.stale { background: var(--stale-soft); color: var(--stale); font-weight: 600; }
+  .tag.over { color: var(--overdue); font-weight: 600; }
+  .tag.dropped { background: var(--line); }
+
+  .inbox { margin: 4px 24px 32px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .inbox .row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .inbox h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0; }
+  .inbox .hint { color: var(--muted); font-size: 12px; }
+  .inbox .row button { margin-left: auto; }
+  .inbox textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; min-height: 84px; }
+
+  .scrim { position: fixed; inset: 0; background: rgba(0,0,0,.18); display: none; }
+  .scrim.on { display: block; }
+  aside { position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 100vw); background: var(--panel); border-left: 1px solid var(--line); transform: translateX(100%); transition: transform .18s ease; display: flex; flex-direction: column; z-index: 2; }
+  aside.on { transform: none; }
+  aside .head { padding: 16px 18px 12px; border-bottom: 1px solid var(--line); }
+  aside .head .x { float: right; border: 0; font-size: 18px; line-height: 1; padding: 2px 6px; }
+  aside h3 { margin: 0 30px 4px 0; font-size: 17px; line-height: 1.3; }
+  aside .meta { color: var(--muted); font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+  aside .body { overflow-y: auto; padding: 14px 18px; flex: 1; }
+  aside section { margin-bottom: 18px; }
+  aside section > .label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 6px; }
+  blockquote { margin: 0; padding: 8px 12px; border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 6px 6px 0; font-style: italic; }
+  .src { font-size: 12px; margin-top: 6px; display: inline-block; color: var(--accent); }
+  .actions { display: flex; flex-wrap: wrap; gap: 6px; }
+  .inline { display: flex; gap: 6px; margin-top: 8px; }
+  .inline input { flex: 1; }
+  .log { font-size: 12px; color: var(--muted); }
+  .log div { padding: 3px 0; border-bottom: 1px dashed var(--line); white-space: pre-wrap; }
+  .log b { color: var(--ink); font-weight: 550; margin-right: 6px; }
+
+  .chat { display: flex; flex-direction: column; gap: 10px; }
+  .msg { padding: 8px 11px; border-radius: 8px; white-space: pre-wrap; max-width: 92%; }
+  .msg.me { background: var(--line); align-self: flex-end; }
+  .msg.ai { background: var(--bg); border: 1px solid var(--line); align-self: flex-start; }
+  .msg.pending { color: var(--muted); font-style: italic; }
+  .msg.has-draft { white-space: normal; width: 92%; }
+  .msg .txt { white-space: pre-wrap; }
+  .draft { border: 1px solid var(--accent); border-radius: 8px; padding: 10px; margin: 8px 0 2px; background: var(--panel); white-space: normal; display: flex; flex-direction: column; gap: 6px; }
+  .draft textarea { min-height: 120px; }
+  .draft .ok { color: var(--founder); font-size: 12px; }
+  .composer { border-top: 1px solid var(--line); padding: 10px 18px 14px; display: flex; gap: 8px; align-items: flex-end; }
+  .composer textarea { min-height: 40px; max-height: 160px; }
+  .err { color: var(--overdue); font-size: 12px; }
+
+  @media (max-width: 900px) {
+    .board { grid-template-columns: 1fr; padding: 16px; }
+    header, .brief, .inbox { margin-left: 16px; margin-right: 16px; }
+    header { padding-left: 0; padding-right: 0; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Commitments</h1>
+  <span class="date" id="date"></span>
+  <span class="sync" id="sync"></span>
+</header>
+<div class="brief" id="brief">Loading…</div>
+
+<main class="board" id="board"></main>
+
+<div class="inbox">
+  <div class="row">
+    <h2>Inbox</h2>
+    <span class="hint" id="inboxHint">One per line. Lines starting with ? are the sweep's guesses; delete the ? to confirm.</span>
+    <button id="processInbox">Process inbox</button>
+  </div>
+  <textarea id="inboxText" spellcheck="false" placeholder="intro Sam to Rachel at Acme by Friday"></textarea>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside id="panel" aria-hidden="true"></aside>
+
+<script>
+const STALE_DAYS = 5;
+const COLS = [
+  { key: 'new', label: 'New' },
+  { key: 'active', label: 'Active' },
+  { key: 'waiting', label: 'Waiting on them' },
+  { key: 'closed', label: 'Done · 14 days' },
+];
+const state = { board: null, current: null, doneOpen: false, pending: false };
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const days = iso => Math.floor((Date.now() - new Date(iso)) / 86400000);
+const fmtDate = iso => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+const fmtTs = iso => new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+const isOpen = t => ['new', 'active', 'waiting'].includes(t.status);
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json' },
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+// ---------- board ----------
+async function loadBoard() {
+  state.board = await api('/api/board');
+  renderBoard();
+}
+
+function tags(t) {
+  const out = [];
+  if (t.person) out.push(esc(t.person));
+  if (t.person_relationship === 'lp') out.push('<span class="tag lp">LP</span>');
+  if (t.person_relationship === 'founder') out.push('<span class="tag founder">founder</span>');
+  if (t.direction === 'they_owe') out.push('<span class="tag owe">they owe</span>');
+  if (t.due_at && isOpen(t)) {
+    const over = new Date(t.due_at) < Date.now();
+    out.push(`<span class="tag ${over ? 'over' : ''}">${over ? 'overdue ' : 'due '}${fmtDate(t.due_at)}</span>`);
+  }
+  const d = days(t.last_touched_at);
+  if (isOpen(t) && d >= STALE_DAYS) out.push(`<span class="tag stale">${d}d untouched</span>`);
+  if (!isOpen(t)) out.push(`${t.status === 'dropped' ? '<span class="tag dropped">dropped</span> ' : ''}${fmtDate(t.closed_at)}`);
+  return out.join('');
+}
+
+function card(t) {
+  const stale = isOpen(t) && days(t.last_touched_at) >= STALE_DAYS;
+  const cls = ['card', stale && 'stale', !isOpen(t) && 'closed', state.current?.task.id === t.id && 'sel'].filter(Boolean).join(' ');
+  return `<div class="${cls}" data-id="${t.id}"><div class="t">${esc(t.title)}</div><div class="m">${tags(t)}</div></div>`;
+}
+
+function renderBoard() {
+  const b = state.board;
+  $('#date').textContent = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  $('#brief').textContent = b.brief;
+  renderSync(b.sync);
+  if (document.activeElement !== $('#inboxText')) $('#inboxText').value = b.inbox;
+
+  // Already sorted by last_touched_at ascending (stalest first) on the server.
+  const groups = { new: [], active: [], waiting: [], closed: [] };
+  for (const t of b.tasks) (isOpen(t) ? groups[t.status] : groups.closed).push(t);
+  groups.closed.sort((a, b) => new Date(b.closed_at) - new Date(a.closed_at));
+
+  $('#board').innerHTML = COLS.map(c => {
+    const list = groups[c.key];
+    const collapsible = c.key === 'closed';
+    const showCards = !collapsible || state.doneOpen;
+    return `<section class="col">
+      <h2>${c.label} <span class="n">${list.length}</span>
+        ${collapsible && list.length ? `<button data-toggle-done>${state.doneOpen ? 'Hide' : 'Show'}</button>` : ''}</h2>
+      ${c.key === 'new' ? '<input class="quickadd" id="quickadd" placeholder="Add a commitment…">' : ''}
+      <div class="cards">${showCards ? (list.map(card).join('') || '<div class="empty">Nothing here.</div>') : ''}</div>
+    </section>`;
+  }).join('');
+}
+
+function renderSync(s) {
+  const el = $('#sync');
+  if (!s || s.action === 'off') { el.innerHTML = 'sync off'; el.className = 'sync'; return; }
+  const when = s.at ? ` ${fmtTs(s.at)}` : '';
+  el.className = `sync${s.ok ? '' : ' bad'}`;
+  el.innerHTML = `<span title="${esc(s.message)}">${s.ok ? `synced${when}` : `sync ${esc(s.action)}: ${esc(s.message)}`}</span><button id="syncNow">Sync</button>`;
+}
+
+$('#board').addEventListener('click', e => {
+  if (e.target.closest('[data-toggle-done]')) { state.doneOpen = !state.doneOpen; renderBoard(); return; }
+  const c = e.target.closest('.card');
+  if (c) openTask(Number(c.dataset.id));
+});
+
+$('#board').addEventListener('keydown', async e => {
+  if (e.target.id !== 'quickadd' || e.key !== 'Enter' || !e.target.value.trim()) return;
+  const title = e.target.value.trim();
+  e.target.value = '';
+  await api('/api/tasks', { method: 'POST', body: { title } });
+  await loadBoard();
+  $('#quickadd').focus();
+});
+
+$('#sync').addEventListener('click', async e => {
+  if (e.target.id !== 'syncNow') return;
+  e.target.disabled = true;
+  e.target.textContent = 'Syncing…';
+  try { await api('/api/sync', { method: 'POST' }); } catch {}
+  await loadBoard();
+});
+
+// ---------- panel ----------
+function sourceLink(t) {
+  const ref = t.source_ref;
+  if (!ref) return null;
+  if (/^https?:\/\//.test(ref)) return ref;
+  if (t.source_type === 'email') return `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(ref)}`;
+  if (t.source_type === 'meeting') return `https://notes.granola.ai/d/${encodeURIComponent(ref)}`;
+  return null;
+}
+
+async function openTask(id) {
+  state.current = await api(`/api/tasks/${id}`);
+  renderPanel();
+  $('#panel').classList.add('on');
+  $('#scrim').classList.add('on');
+  $('#panel').setAttribute('aria-hidden', 'false');
+  renderBoard();
+}
+
+function closePanel() {
+  state.current = null;
+  $('#panel').classList.remove('on');
+  $('#scrim').classList.remove('on');
+  $('#panel').setAttribute('aria-hidden', 'true');
+  if (state.board) renderBoard();
+}
+
+const DRAFT_RE = /<draft\b([^>]*)>([\s\S]*?)<\/draft>/i;
+function parseDraft(text) {
+  const m = DRAFT_RE.exec(text);
+  if (!m) return null;
+  const attr = n => (new RegExp(`${n}="([^"]*)"`).exec(m[1]) || [])[1] || '';
+  return { to: attr('to'), subject: attr('subject'), body: m[2].trim(), before: text.slice(0, m.index).trim(), after: text.slice(m.index + m[0].length).trim() };
+}
+
+function renderMsg(e, i) {
+  const PREFIX = 'Dror: ';
+  if (e.body.startsWith(PREFIX)) return `<div class="msg me">${esc(e.body.slice(PREFIX.length))}</div>`;
+  const d = parseDraft(e.body);
+  if (!d) return `<div class="msg ai">${esc(e.body)}</div>`;
+  const gm = state.board?.features.gmail;
+  const gmAttr = gm ? '' : 'disabled title="Gmail not configured. Run node scripts/google-auth.js"';
+  return `<div class="msg ai has-draft">${d.before ? `<div class="txt">${esc(d.before)}</div>` : ''}`
+    + `<div class="draft" data-draft="${i}">`
+    + `<input data-f="to" value="${esc(d.to)}" placeholder="To">`
+    + `<input data-f="subject" value="${esc(d.subject)}" placeholder="Subject (blank = reply in thread)">`
+    + `<textarea data-f="body" rows="7">${esc(d.body)}</textarea>`
+    + `<div><button class="primary" data-save-draft ${gmAttr}>Save as draft in Gmail</button> <span class="ok"></span></div>`
+    + `</div>${d.after ? `<div class="txt">${esc(d.after)}</div>` : ''}</div>`;
+}
+
+function renderPanel() {
+  const { task: t, log } = state.current;
+  const link = sourceLink(t);
+  const chat = log.filter(e => e.kind === 'chat');
+  const other = log.filter(e => e.kind !== 'chat');
+  const claudeOn = state.board?.features.claude;
+  const open = isOpen(t);
+
+  $('#panel').innerHTML = `
+    <div class="head">
+      <button class="x" data-close aria-label="Close">×</button>
+      <h3>${esc(t.title)}</h3>
+      <div class="meta">${tags(t)}<span>${esc(t.status)}</span>${t.person_email ? `<span>${esc(t.person_email)}</span>` : ''}</div>
+    </div>
+    <div class="body">
+      ${t.detail ? `<section>${esc(t.detail)}</section>` : ''}
+      <section>
+        <div class="label">Source · ${esc(t.source_type)}</div>
+        ${t.source_excerpt ? `<blockquote>${esc(t.source_excerpt)}</blockquote>` : '<div class="empty">No excerpt.</div>'}
+        ${link ? `<a class="src" href="${esc(link)}" target="_blank" rel="noopener">Open source ↗</a>` : ''}
+      </section>
+      <section>
+        <div class="actions">
+          ${open && t.status !== 'active' ? '<button data-status="active">Mark active</button>' : ''}
+          ${open && t.status !== 'waiting' ? '<button data-status="waiting">Mark waiting</button>' : ''}
+          ${open ? '<button data-act="done">Mark done</button><button data-act="drop">Drop</button><button data-act="snooze">Snooze</button>' : '<button data-status="active">Reopen</button>'}
+        </div>
+        <div id="actForm"></div>
+        ${t.close_reason ? `<div class="log" style="margin-top:8px">Closed: ${esc(t.close_reason)}</div>` : ''}
+      </section>
+      <section>
+        <div class="label">Log</div>
+        <div class="log">${other.map(e => `<div><b>${esc(e.kind)}</b>${fmtTs(e.ts)}${e.body ? ` · ${esc(e.body)}` : ''}</div>`).join('')}</div>
+      </section>
+      <section>
+        <div class="label">Chat</div>
+        <div class="chat" id="chat">${chat.map(renderMsg).join('') || `<div class="empty">${claudeOn ? 'Ask what it takes to close this.' : 'Set ANTHROPIC_API_KEY in .env to chat.'}</div>`}</div>
+        <div class="err" id="chatErr"></div>
+      </section>
+    </div>
+    <div class="composer">
+      <textarea id="chatInput" rows="1" placeholder="What's the next step?" ${claudeOn ? '' : 'disabled'}></textarea>
+      <button class="primary" id="chatSend" ${claudeOn ? '' : 'disabled'}>Send</button>
+    </div>`;
+  const body = $('#panel .body');
+  body.scrollTop = body.scrollHeight;
+}
+
+function actForm(kind) {
+  const f = $('#actForm');
+  if (kind === 'snooze') {
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    f.innerHTML = `<form class="inline" data-form="snooze"><input type="date" name="v" value="${tomorrow}" required><button class="primary">Snooze</button></form>`;
+  } else {
+    f.innerHTML = `<form class="inline" data-form="${kind}"><input name="v" placeholder="${kind === 'done' ? 'One line: how it closed' : 'Why drop it (optional)'}" ${kind === 'done' ? 'required' : ''}><button class="primary">${kind === 'done' ? 'Done' : 'Drop'}</button></form>`;
+  }
+  f.querySelector('input').focus();
+}
+
+async function setStatus(status, reason) {
+  const id = state.current.task.id;
+  await api(`/api/tasks/${id}/status`, { method: 'POST', body: { status, reason } });
+  if (status === 'done' || status === 'dropped') { closePanel(); await loadBoard(); return; }
+  await loadBoard();
+  await openTask(id);
+}
+
+$('#panel').addEventListener('click', async e => {
+  const t = e.target;
+  if (t.closest('[data-close]')) return closePanel();
+  if (t.dataset.status) return setStatus(t.dataset.status);
+  if (t.dataset.act) return actForm(t.dataset.act);
+  if (t.closest('#chatSend')) return sendChat();
+  if (t.hasAttribute('data-save-draft')) {
+    const box = t.closest('.draft');
+    const get = f => box.querySelector(`[data-f="${f}"]`).value;
+    t.disabled = true;
+    t.textContent = 'Saving…';
+    try {
+      await api(`/api/tasks/${state.current.task.id}/gmail-draft`, { method: 'POST', body: { to: get('to'), subject: get('subject'), body: get('body') } });
+      t.textContent = 'Saved to Gmail drafts';
+    } catch (err) {
+      t.disabled = false;
+      t.textContent = 'Save as draft in Gmail';
+      box.querySelector('.ok').textContent = err.message;
+      box.querySelector('.ok').className = 'err';
+    }
+  }
+});
+
+$('#panel').addEventListener('submit', async e => {
+  e.preventDefault();
+  const kind = e.target.dataset.form;
+  const v = e.target.v.value.trim();
+  try {
+    if (kind === 'snooze') {
+      await api(`/api/tasks/${state.current.task.id}/snooze`, { method: 'POST', body: { due: v } });
+      await loadBoard();
+      await openTask(state.current.task.id);
+    } else {
+      await setStatus(kind === 'done' ? 'done' : 'dropped', v);
+    }
+  } catch (err) { alert(err.message); }
+});
+
+$('#panel').addEventListener('keydown', e => {
+  if (e.target.id === 'chatInput' && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+});
+
+async function sendChat() {
+  const input = $('#chatInput');
+  const message = input.value.trim();
+  if (!message || state.pending) return;
+  state.pending = true;
+  const id = state.current.task.id;
+  const chat = $('#chat');
+  chat.querySelector('.empty')?.remove();
+  chat.insertAdjacentHTML('beforeend', `<div class="msg me">${esc(message)}</div><div class="msg ai pending">Thinking…</div>`);
+  input.value = '';
+  $('#panel .body').scrollTop = 1e9;
+  try {
+    await api(`/api/tasks/${id}/chat`, { method: 'POST', body: { message } });
+    if (state.current?.task.id === id) await openTask(id);
+  } catch (err) {
+    chat.querySelector('.pending')?.remove();
+    $('#chatErr').textContent = err.message;
+  } finally {
+    state.pending = false;
+  }
+}
+
+$('#scrim').addEventListener('click', closePanel);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && state.current) closePanel(); });
+
+// ---------- inbox ----------
+let inboxTimer;
+$('#inboxText').addEventListener('input', () => {
+  clearTimeout(inboxTimer);
+  $('#inboxHint').textContent = 'Saving…';
+  inboxTimer = setTimeout(saveInbox, 600);
+});
+
+async function saveInbox() {
+  await api('/api/inbox', { method: 'PUT', body: { text: $('#inboxText').value } });
+  $('#inboxHint').textContent = 'Saved. Processed on the next sweep, or now.';
+}
+
+$('#processInbox').addEventListener('click', async e => {
+  const btn = e.target;
+  btn.disabled = true;
+  btn.textContent = 'Processing…';
+  try {
+    clearTimeout(inboxTimer);
+    await saveInbox();
+    const r = await api('/api/inbox/process', { method: 'POST' });
+    $('#inboxText').value = r.inbox;
+    $('#inboxHint').textContent = r.created.length ? `Added ${r.created.length} to New.` : 'Nothing to process.';
+    await loadBoard();
+  } catch (err) {
+    $('#inboxHint').textContent = err.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Process inbox';
+  }
+});
+
+loadBoard().catch(err => { $('#brief').textContent = `Could not load: ${err.message}`; });
+</script>
+</body>
+</html>

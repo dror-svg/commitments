@@ -4,6 +4,7 @@
   "description": "Personal follow-through system",
   "main": "db.js",
   "scripts": {
+    "start": "node server.js",
     "cli": "node cli.js"
   },
   "repository": {
@@ -15,7 +16,9 @@
   },
   "homepage": "https://github.com/dror-svg/commitments#readme",
   "dependencies": {
-    "better-sqlite3": "^13.0.3"
+    "@anthropic-ai/sdk": "^0.131.0",
+    "better-sqlite3": "^13.0.3",
+    "express": "^5.2.1"
   },
   "private": true
 }
