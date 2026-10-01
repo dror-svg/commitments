@@ -7,7 +7,7 @@ const store = require('./db');
 
 const USAGE = `Usage: node cli.js <command> [args] [--json]
 
-  add "text" [--person NAME] [--email ADDR] [--direction i_owe|they_owe]
+  add "text" [--person NAME] [--company CO] [--email ADDR] [--direction i_owe|they_owe]
              [--source email|meeting|slack|note|manual] [--ref SOURCE_REF]
              [--excerpt "verbatim sentence"] [--detail TEXT] [--due DATE] [--status STATUS]
   list [status|open|all]          default: open (new, active, waiting)
@@ -15,14 +15,15 @@ const USAGE = `Usage: node cli.js <command> [args] [--json]
   log <id>                        the log only
   done <id> "reason"
   drop <id> "reason"
-  status <id> <new|active|waiting>
+  status <id> <new|active|waiting|delegated>
+  delegate <id>                   hand to Kieran (status delegated)
   snooze <id> <DATE>              DATE is YYYY-MM-DD, ISO, or +Nd
   note <id> "text" [--kind note|draft|nudge|chat]
   update <id> [--title ..] [--person ..] [--email ..] [--direction ..] [--due ..] ...
   find [--person NAME] [--email ADDR] [--q "words"] [--ref SOURCE_REF]
                                   open tasks for dedupe (--ref searches all statuses)
-  person <email> [--name NAME] [--rel lp|founder|partner|team|friend|other] [--notes TEXT]
-  people
+  person <email|"Full Name"> [--name NAME] [--company CO] [--rel lp|founder|partner|team|friend|other] [--notes TEXT]
+  people [--unknown]              --unknown: people whose relationship hasn't been set
   brief                           today's brief paragraph (--json adds owe: open items on you)
   process-inbox                   turn inbox.md lines into tasks (keeps "?" lines)
   sync ["commit message"]         pull, replay local changes, commit data, push`;
@@ -36,6 +37,7 @@ const { values: o, positionals: [cmd, ...args] } = parseArgs({
     detail: { type: 'string' }, due: { type: 'string' }, status: { type: 'string' },
     title: { type: 'string' }, kind: { type: 'string' }, q: { type: 'string' },
     name: { type: 'string' }, rel: { type: 'string' }, notes: { type: 'string' },
+    company: { type: 'string' }, unknown: { type: 'boolean' },
     help: { type: 'boolean', short: 'h' },
   },
 });
@@ -50,6 +52,11 @@ function line(t) {
   const due = t.due_at ? ` · due ${short(t.due_at)}` : '';
   const mark = stale >= 5 && store.OPEN_STATUSES.includes(t.status) ? ` · ${stale}d stale` : '';
   return `#${t.id} [${t.status}] ${t.title}${who}${dir}${due}${mark}`;
+}
+
+function personLine(p) {
+  const who = [p.name, p.company && `(${p.company})`].filter(Boolean).join(' ');
+  console.log([who || '?', p.email, p.relationship ?? 'relationship not set', p.notes].filter(Boolean).join(' · '));
 }
 
 function printTask(t) {
@@ -81,6 +88,7 @@ function taskFields() {
   if (o.detail !== undefined) f.detail = o.detail;
   if (o.direction !== undefined) f.direction = o.direction;
   if (o.person !== undefined) f.person = o.person;
+  if (o.company !== undefined) f.company = o.company;
   if (o.email !== undefined) f.person_email = o.email;
   if (o.source !== undefined) f.source_type = o.source;
   if (o.ref !== undefined) f.source_ref = o.ref;
@@ -112,7 +120,7 @@ const commands = {
   drop() { out(store.setStatus(id(), 'dropped', args.slice(1).join(' ') || null), t => console.log(line(t))); },
   status() {
     const s = args[1];
-    if (!['new', 'active', 'waiting'].includes(s)) throw new Error('status must be new, active, or waiting (use done/drop to close)');
+    if (!['new', 'active', 'waiting', 'delegated'].includes(s)) throw new Error('status must be new, active, waiting, or delegated (use done/drop to close)');
     out(store.setStatus(id(), s), t => console.log(line(t)));
   },
   snooze() { out(store.snooze(id(), args[1]), t => console.log(line(t))); },
@@ -128,14 +136,18 @@ const commands = {
     out(rows, r => (r.length ? r.forEach(t => console.log(line(t))) : console.log('No match.')));
   },
   person() {
-    if (!args[0]) throw new Error('Expected an email');
-    store.upsertPerson({ email: args[0], name: o.name, relationship: o.rel, notes: o.notes });
-    out(store.getPerson(args[0]), p => console.log(`${p.email} · ${p.name ?? ''} · ${p.relationship}${p.notes ? ` · ${p.notes}` : ''}`));
+    if (!args[0]) throw new Error('Expected an email or a name');
+    const byEmail = args[0].includes('@');
+    const p = store.upsertPerson({
+      email: byEmail ? args[0] : undefined, name: byEmail ? o.name : (o.name ?? args[0]),
+      company: o.company, relationship: o.rel, notes: o.notes,
+    });
+    out(p, personLine);
   },
   people() {
-    out(store.listPeople(), ps => (ps.length ? ps.forEach(p =>
-      console.log(`${p.email} · ${p.name ?? ''} · ${p.relationship}${p.notes ? ` · ${p.notes}` : ''}`)) : console.log('Nobody yet.')));
+    out(store.listPeople({ unknown: o.unknown }), ps => (ps.length ? ps.forEach(personLine) : console.log('Nobody.')));
   },
+  delegate() { out(store.setStatus(id(), 'delegated', 'to Kieran'), t => console.log(line(t))); },
   brief() {
     const { composeBrief, oweCount } = require('./brief');
     out({ brief: composeBrief(), owe: oweCount() }, d => console.log(d.brief));

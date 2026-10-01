@@ -75,6 +75,7 @@ app.get('/api/board', wrap(() => {
     tasks,
     brief: composeBrief(tasks),
     inbox: inbox.read(),
+    unknownPeople: store.listPeople({ unknown: true }),
     sync: syncState,
     features: { claude: Boolean(process.env.ANTHROPIC_API_KEY), gmail: Boolean(process.env.GOOGLE_REFRESH_TOKEN) },
   };
@@ -86,11 +87,24 @@ app.get('/api/tasks/:id', wrap(req => {
   return {
     task,
     log: store.getLog(id),
-    person: task.person_email ? store.getPerson(task.person_email) ?? null : null,
+    person: store.findPerson({ email: task.person_email, name: task.person }) ?? null,
   };
 }));
 
-app.post('/api/tasks', writes(req => store.addTask({ title: req.body.title, source_type: 'manual' })));
+// Quick add is free text: same parsing as the inbox (person, company, Kieran for logistics).
+app.post('/api/tasks', writes(async req => {
+  const title = req.body.title?.trim();
+  if (!title) throw new Error('Empty task');
+  const { created } = await inbox.addFromFreeText([title], 'manual');
+  return created[0];
+}));
+
+// Answer to "how do you know them?". Keyed by email or name so it replays cleanly across copies.
+app.post('/api/people', writes(req => {
+  const { email, name, relationship } = req.body;
+  if (!store.RELATIONSHIPS.includes(relationship)) throw new Error('Pick a relationship');
+  return store.upsertPerson({ email, name, relationship });
+}));
 
 app.post('/api/tasks/:id/status', writes(req => {
   const { status, reason } = req.body;

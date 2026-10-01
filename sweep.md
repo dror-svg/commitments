@@ -30,10 +30,10 @@ The sweep window runs from the timestamp in `data/last_sweep.txt` to now. If the
 Read `inbox.md`. Each line that doesn't start with `?` or `#` is something Dror wrote himself. Turn each one into a task:
 
 ```
-node cli.js add "<short imperative title>" --source note --excerpt "<the line, verbatim>" [--person "Name"] [--email addr] [--due YYYY-MM-DD] [--direction they_owe]
+node cli.js add "<short imperative title>" --source note --excerpt "<the line, verbatim>" [--person "Full Name" --company "Company"] [--email addr] [--due YYYY-MM-DD] [--direction they_owe] [--status delegated]
 ```
 
-Use only what the line says. Don't invent people, emails, or dates. Only add an email if you can confirm it from Gmail.
+Use only what the line says. Pull out who the task is with and their company. Check `node cli.js people --json` first, and if the line names a known person, use the name and company exactly as stored. Don't invent people, emails, or dates. Only add an email if you can confirm it from Gmail. Scheduling and logistics get `--status delegated` (see step 4).
 
 Then rewrite `inbox.md` so it keeps only the `?` and `#` lines. Lines starting with `?` are earlier guesses still waiting for Dror to confirm, so leave them alone.
 
@@ -67,12 +67,14 @@ For each commitment you do create:
 
 ```
 node cli.js add "<short imperative title>" \
-  --person "<Full Name>" --email <address> \
+  --person "<Full Name>" --company "<Company>" --email <address> \
   --source email|meeting|slack \
   --ref "<Gmail thread id | full Granola meeting URL | Slack permalink>" \
   --excerpt "<the sentence that created the commitment, copied verbatim>" \
-  [--due YYYY-MM-DD] [--direction they_owe --status waiting] [--detail "<one line of context>"]
+  [--due YYYY-MM-DD] [--direction they_owe --status waiting] [--status delegated] [--detail "<one line of context>"]
 ```
+
+**Kieran.** Scheduling and logistics go to Kieran by default. That covers setting up time, calls, and meetings, plus travel, bookings, dinners, and rooms. Create those with `--status delegated`. Don't use it for anything that needs Dror's own judgment or voice.
 
 Only set `--due` when a date is stated or clearly implied ("by Friday", "before the board meeting on the 12th"). The excerpt must be copied from the source exactly. Don't paraphrase it or stitch sentences together.
 
@@ -89,10 +91,10 @@ If a task already covers the same person and the same topic, don't add a new one
 **People.** When you learn someone's name and email, record them:
 
 ```
-node cli.js person <email> --name "<Full Name>"
+node cli.js person <email> --name "<Full Name>" --company "<Company>"
 ```
 
-Add `--rel lp|founder|partner|team|friend` only when it's unambiguous. Examples: an LP from fund context, a CEO of a portfolio company, an IE colleague on an `@innovationendeavors.com` address. Otherwise leave it out. Never change a relationship that's already set.
+Add `--rel lp|founder|partner|team|friend` only when it's unambiguous. Examples: an LP from fund context, a CEO of a portfolio company, an IE colleague on an `@innovationendeavors.com` address. Otherwise leave it out, and the dashboard will ask Dror once. Never change a relationship that's already set.
 
 ## Step 5. Close what's closed
 
@@ -100,6 +102,7 @@ For each open task (`node cli.js list open --json`), look in the sweep window fo
 
 * `i_owe`: Dror sent the person the promised thing, in the source thread or a new one. Examples: the attachment, the intro email with both people on it, the answer to the question. A calendar event that Dror scheduled and the person accepted counts for "set up time" commitments.
 * `they_owe`: the person sent what they promised.
+* `delegated`: Kieran did it. For example, the invite is on Dror's calendar and the other person accepted, or the booking confirmation is in the inbox.
 
 Evidence must be specific. A reply that says "will do" isn't evidence. Neither is a meeting that only mentions the topic. When it's clear:
 
@@ -117,7 +120,7 @@ Never close or drop a task just because it's old.
 node cli.js brief --json
 ```
 
-This returns `brief` (one paragraph) and `owe` (the count of open items on Dror). Write `data/brief.md` as plain text with no markdown, no bullets, and no headings. It's two paragraphs:
+This returns `brief` (one paragraph) and `owe`, the count of open items on Dror himself. Items that are waiting on others or delegated to Kieran don't count. Write `data/brief.md` as plain text with no markdown, no bullets, and no headings. It's two paragraphs:
 
 1. The `brief` text, exactly as returned.
 2. One or two short sentences on what this sweep did. Say how many tasks you added and closed, and name any LP items. If you added `?` lines, say how many are waiting in the inbox to confirm. If nothing changed, say "Sweep found nothing new." Write in the voice from `CLAUDE.md`. No em dashes.

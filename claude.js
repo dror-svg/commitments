@@ -76,7 +76,7 @@ async function chat(taskId, message) {
   if (!task) throw new Error(`No task with id ${taskId}`);
   store.addLog(taskId, 'chat', USER_PREFIX + message);
   const log = store.getLog(taskId);
-  const person = task.person_email ? store.getPerson(task.person_email) : null;
+  const person = store.findPerson({ email: task.person_email, name: task.person }) ?? null;
 
   const reply = await call({
     system: [
@@ -92,7 +92,7 @@ async function chat(taskId, message) {
   return { reply, draft };
 }
 
-const INBOX_SCHEMA = {
+const FREE_TEXT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   required: ['tasks'],
@@ -102,36 +102,52 @@ const INBOX_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['line', 'title', 'person', 'person_email', 'direction', 'due_at', 'detail'],
+        required: ['line', 'title', 'person', 'company', 'person_email', 'direction', 'due_at', 'detail', 'delegate'],
         properties: {
-          line: { type: 'string', description: 'The inbox line this came from, verbatim' },
+          line: { type: 'string', description: 'The input line this came from, verbatim' },
           title: { type: 'string', description: 'Short imperative title, e.g. "Send Q3 deck to Maya"' },
-          person: { type: ['string', 'null'] },
+          person: { type: ['string', 'null'], description: 'Full name of the person the task is with, as written, capitalized. No company here.' },
+          company: { type: ['string', 'null'], description: 'Their company or fund, if stated or known, capitalized properly' },
           person_email: { type: ['string', 'null'] },
           direction: { type: 'string', enum: ['i_owe', 'they_owe'] },
           due_at: { type: ['string', 'null'], description: 'YYYY-MM-DD if a date is stated or clearly implied' },
           detail: { type: ['string', 'null'] },
+          delegate: { type: 'boolean', description: 'true when the task is scheduling or logistics: setting up time, meetings, calls, travel, trips, flights, hotels, bookings, dinners, rooms. Kieran (EA) handles these.' },
         },
       },
     },
   },
 };
 
-// Turns free-form inbox lines into task fields. Falls back to one task per line, verbatim.
-async function parseInboxLines(lines) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return lines.map(line => ({ line, title: line, direction: 'i_owe' }));
-  }
-  const people = store.listPeople().map(p => `${p.name ?? ''} <${p.email}> ${p.relationship}`).join('\n');
+const LOGISTICS = /\b(set ?up (a )?(time|call|meeting|trip)|schedul\w*|book(ing)?|travel|trip|flights?|hotels?|dinner|lunch|breakfast|coffee|calendar|reschedul\w*|logistics|room)\b/i;
+const titleCase = s => s.replace(/\b\w/g, c => c.toUpperCase());
+
+// No API key: keep the line as the title, catch "with <name> at <company>", flag logistics by keyword.
+function heuristic(line) {
+  const m = /\bwith ([a-z][\w'-]*(?: [A-Z][\w'-]*)?)(?: (?:at|from) ([\w&.' -]+?))?(?=$| (?:on|by|next|this|re|about|before|after)\b|[,.;])/i.exec(line);
+  return {
+    line, title: line, direction: 'i_owe', due_at: null, detail: null, person_email: null,
+    person: m ? titleCase(m[1]) : null,
+    company: m?.[2] ? titleCase(m[2].trim()) : null,
+    delegate: LOGISTICS.test(line),
+  };
+}
+
+// Turns free-form lines (inbox or quick add) into task fields.
+async function parseFreeText(lines) {
+  if (!process.env.ANTHROPIC_API_KEY) return lines.map(heuristic);
+  const people = store.listPeople()
+    .map(p => `${p.name ?? ''}${p.company ? ` (${p.company})` : ''}${p.email ? ` <${p.email}>` : ''} ${p.relationship ?? 'unknown'}`)
+    .join('\n');
   const text = await call({
     system: [
       { type: 'text', text: styleGuide(), cache_control: { type: 'ephemeral' } },
-      { type: 'text', text: `Today is ${new Date().toISOString().slice(0, 10)}. Turn each inbox line into one task. Keep Dror's meaning; do not invent people, emails, or dates. direction is they_owe only when someone else owes Dror. Known people:\n${people || '(none)'}` },
+      { type: 'text', text: `Today is ${new Date().toISOString().slice(0, 10)}. Turn each line into one task. Keep Dror's meaning. Pull out who the task is with and their company. If the line matches a known person, use that person's name and company exactly. Do not invent people, emails, or dates. direction is they_owe only when someone else owes Dror. Set delegate for scheduling and logistics. Known people:\n${people || '(none)'}` },
     ],
     messages: [{ role: 'user', content: lines.join('\n') }],
-    output_config: { format: { type: 'json_schema', schema: INBOX_SCHEMA } },
+    output_config: { format: { type: 'json_schema', schema: FREE_TEXT_SCHEMA } },
   });
   return JSON.parse(text).tasks;
 }
 
-module.exports = { chat, parseDraft, parseInboxLines, USER_PREFIX, MODEL };
+module.exports = { chat, parseDraft, parseFreeText, heuristic, USER_PREFIX, MODEL };
