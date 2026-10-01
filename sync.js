@@ -10,6 +10,10 @@ const ROOT = __dirname;
 const DB_REL = path.relative(ROOT, store.DB_PATH);
 const INBOX_REL = 'inbox.md';
 const DATA_FILES = [DB_REL, INBOX_REL];
+// Written only by the sweep. Committed alongside the data, never rebuilt.
+const SWEEP_FILES = ['data/brief.md', 'data/last_sweep.txt'];
+
+const committable = () => [...DATA_FILES, ...SWEEP_FILES.filter(f => fs.existsSync(path.join(ROOT, f)))];
 
 function git(...args) {
   return execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -34,7 +38,7 @@ function mergeInbox(base, local, remote) {
 }
 
 function dataDirty() {
-  return git('status', '--porcelain', '--', ...DATA_FILES) !== '';
+  return git('status', '--porcelain', '--', ...committable()) !== '';
 }
 
 // Returns { ok, action, message }. Synchronous on purpose: no writes can land mid-sync.
@@ -63,11 +67,16 @@ function sync({ message = 'sync: dashboard' } = {}) {
         git('checkout', 'HEAD', '--', ...DATA_FILES);
         if (tryGit('merge', '--no-edit', '-q', remote) === null) {
           const conflicted = git('diff', '--name-only', '--diff-filter=U').split('\n').filter(Boolean);
-          if (conflicted.some(f => !DATA_FILES.includes(f))) {
+          if (conflicted.some(f => !DATA_FILES.includes(f) && !SWEEP_FILES.includes(f))) {
             tryGit('merge', '--abort');
             throw new Error(`merge conflict outside data files: ${conflicted.join(', ')}`);
           }
-          git('checkout', '--theirs', '--', ...conflicted);
+          // DB and inbox: take theirs, local changes come back via replay and mergeInbox.
+          // Sweep files: keep ours, they were just written.
+          const theirs = conflicted.filter(f => DATA_FILES.includes(f));
+          const ours = conflicted.filter(f => SWEEP_FILES.includes(f));
+          if (theirs.length) git('checkout', '--theirs', '--', ...theirs);
+          if (ours.length) git('checkout', '--ours', '--', ...ours);
           git('add', '--', ...conflicted);
           git('commit', '--no-edit', '-q');
         }
@@ -86,8 +95,9 @@ function sync({ message = 'sync: dashboard' } = {}) {
 
     if (dataDirty()) {
       store.close(); // flush and release before git reads the file
-      git('add', '--', ...DATA_FILES);
-      git('commit', '-q', '-m', message, '--', ...DATA_FILES);
+      const files = committable();
+      git('add', '--', ...files);
+      git('commit', '-q', '-m', message, '--', ...files);
     }
 
     const ahead = remote ? tryGit('rev-list', '--count', `${remote}..HEAD`) : '1';
