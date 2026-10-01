@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 // CLI over db.js. The dashboard is the main surface; the sweep drives this.
+const path = require('path');
+try { process.loadEnvFile(path.join(__dirname, '.env')); } catch {}
 const { parseArgs } = require('util');
 const store = require('./db');
 
@@ -20,7 +22,10 @@ const USAGE = `Usage: node cli.js <command> [args] [--json]
   find [--person NAME] [--email ADDR] [--q "words"] [--ref SOURCE_REF]
                                   open tasks for dedupe (--ref searches all statuses)
   person <email> [--name NAME] [--rel lp|founder|partner|team|friend|other] [--notes TEXT]
-  people`;
+  people
+  brief                           today's brief paragraph
+  process-inbox                   turn inbox.md lines into tasks (keeps "?" lines)
+  sync ["commit message"]         pull, replay local changes, commit data, push`;
 
 const { values: o, positionals: [cmd, ...args] } = parseArgs({
   allowPositionals: true,
@@ -131,6 +136,19 @@ const commands = {
     out(store.listPeople(), ps => (ps.length ? ps.forEach(p =>
       console.log(`${p.email} · ${p.name ?? ''} · ${p.relationship}${p.notes ? ` · ${p.notes}` : ''}`)) : console.log('Nobody yet.')));
   },
+  brief() {
+    const text = require('./brief').composeBrief();
+    out({ brief: text }, () => console.log(text));
+  },
+  async 'process-inbox'() {
+    const created = await require('./inbox').processInbox();
+    out(created, rows => (rows.length ? rows.forEach(t => console.log(line(t))) : console.log('Inbox empty.')));
+  },
+  sync() {
+    const r = require('./sync').sync(args[0] ? { message: args[0] } : {});
+    out(r, x => console.log(x.ok ? x.action : `${x.action}: ${x.message}`));
+    if (!r.ok && r.action === 'paused') process.exitCode = 1;
+  },
 };
 
 if (o.help || !cmd || !commands[cmd]) {
@@ -138,9 +156,7 @@ if (o.help || !cmd || !commands[cmd]) {
   process.exit(cmd && !o.help && !commands[cmd] ? 1 : 0);
 }
 
-try {
-  commands[cmd]();
-} catch (e) {
+Promise.resolve().then(() => commands[cmd]()).catch(e => {
   console.error(`Error: ${e.message}`);
   process.exit(1);
-}
+});

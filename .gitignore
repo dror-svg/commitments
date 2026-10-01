@@ -146,3 +146,5 @@ vite.config.ts.timestamp-*
 data/*.db-wal
 data/*.db-shm
 data/*.db-journal
+data/*.pending.jsonl
+data/*.bak
